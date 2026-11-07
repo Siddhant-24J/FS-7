@@ -1,0 +1,223 @@
+name: Build FS-7 Mobile Apps (Android & iOS)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  # ----------------------------------------------------
+  # 1. BUILD ANDROID APK
+  # ----------------------------------------------------
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Clean
+        run: flutter clean
+
+      - name: Ensure Assets & App Launcher Icons Exist
+        run: |
+          mkdir -p assets/images
+          touch assets/images/.gitkeep
+          mkdir -p android/app/src/main/res/drawable
+          rm -f android/app/src/main/res/drawable/ic_launcher.xml android/app/src/main/res/drawable/ic_launcher.png
+          mkdir -p android/app/src/main/res/mipmap-mdpi
+          mkdir -p android/app/src/main/res/mipmap-hdpi
+          mkdir -p android/app/src/main/res/mipmap-xhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxxhdpi
+          LOGO_SRC=""
+          [ -f "png-01.png" ] && LOGO_SRC="png-01.png"
+          [ -f "PNG-01.png" ] && LOGO_SRC="PNG-01.png"
+          if [ -n "$LOGO_SRC" ]; then
+            cp -f "$LOGO_SRC" assets/images/logo.png
+            cp -f "$LOGO_SRC" assets/images/png-01.png
+            cp -f "$LOGO_SRC" assets/images/PNG-01.png
+            cp -f "$LOGO_SRC" android/app/src/main/res/drawable/logo.png
+            cp -f "$LOGO_SRC" android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+            cp -f "$LOGO_SRC" android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+            cp -f "$LOGO_SRC" android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+            cp -f "$LOGO_SRC" android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+            cp -f "$LOGO_SRC" android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          fi
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Generate Release Keystore
+        run: |
+          mkdir -p android/app ~/.android ~/.config/.android
+          keytool -genkeypair -v -keystore android/app/debug.keystore \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=FS7 Staff App, OU=Staff, O=FS7 Gym, L=Mumbai, ST=Maharashtra, C=IN"
+          cp android/app/debug.keystore ~/.android/debug.keystore
+          cp android/app/debug.keystore ~/.config/.android/debug.keystore
+
+      - name: Build APK (Release)
+        run: |
+          flutter build apk --release --no-tree-shake-icons --android-skip-build-dependency-validation
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/FS7-Gym-App.apk
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FS7-Android-APK
+          path: build/app/outputs/flutter-apk/FS7-Gym-App.apk
+          if-no-files-found: error
+
+  # ----------------------------------------------------
+  # 2. BUILD IOS (Physical iPhone ARM64 IPA)
+  # ----------------------------------------------------
+  build-ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Ensure Assets & App Launcher Icons Exist
+        run: |
+          mkdir -p assets/images
+          touch assets/images/.gitkeep
+          mkdir -p android/app/src/main/res/drawable
+          rm -f android/app/src/main/res/drawable/ic_launcher.xml android/app/src/main/res/drawable/ic_launcher.png
+          mkdir -p android/app/src/main/res/mipmap-mdpi
+          mkdir -p android/app/src/main/res/mipmap-hdpi
+          mkdir -p android/app/src/main/res/mipmap-xhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxxhdpi
+          LOGO_SRC=""
+          [ -f "png-01.png" ] && LOGO_SRC="png-01.png"
+          [ -f "PNG-01.png" ] && LOGO_SRC="PNG-01.png"
+          if [ -n "$LOGO_SRC" ]; then
+            cp -f "$LOGO_SRC" assets/images/logo.png
+            cp -f "$LOGO_SRC" assets/images/png-01.png
+            cp -f "$LOGO_SRC" assets/images/PNG-01.png
+            cp -f "$LOGO_SRC" android/app/src/main/res/drawable/logo.png
+            cp -f "$LOGO_SRC" android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+            cp -f "$LOGO_SRC" android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+            cp -f "$LOGO_SRC" android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+            cp -f "$LOGO_SRC" android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+            cp -f "$LOGO_SRC" android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          fi
+
+      - name: Clean Cross-Platform iOS Cache & Backup Config
+        run: |
+          rm -f ios/Flutter/Generated.xcconfig ios/Flutter/flutter_export_environment.sh
+          cp ios/Runner/Info.plist /tmp/Info.plist.bak 2>/dev/null || true
+          cp ios/Podfile /tmp/Podfile.bak 2>/dev/null || true
+
+      - name: Generate Native iOS Project Structure
+        run: flutter create --org com.fs7 --platforms=ios .
+
+      - name: Restore Custom iOS Configuration
+        run: |
+          cp /tmp/Info.plist.bak ios/Runner/Info.plist 2>/dev/null || true
+          if [ -f "/tmp/Podfile.bak" ]; then
+            cp /tmp/Podfile.bak ios/Podfile
+          fi
+          sed -i '' 's/# platform :ios.*/platform :ios, '"'"'15.0'"'"'/g' ios/Podfile 2>/dev/null || sed -i 's/# platform :ios.*/platform :ios, '"'"'15.0'"'"'/g' ios/Podfile 2>/dev/null || true
+
+      - name: Disable iOS Code Signing Requirement in Xcode Project
+        run: |
+          python3 -c '
+          with open("ios/Runner.xcodeproj/project.pbxproj", "r") as f:
+              s = f.read()
+          s = s.replace("CODE_SIGN_STYLE = Automatic;", "CODE_SIGN_STYLE = Manual;")
+          s = s.replace("CODE_SIGN_IDENTITY = \"iPhone Developer\";", "CODE_SIGN_IDENTITY = \"\";\n\t\t\t\tCODE_SIGNING_ALLOWED = NO;\n\t\t\t\tCODE_SIGNING_REQUIRED = NO;")
+          with open("ios/Runner.xcodeproj/project.pbxproj", "w") as f:
+              f.write(s)
+          print("Successfully disabled code signing requirement in Runner.xcodeproj")
+          '
+
+      - name: Apply iOS App Icons
+        run: |
+          python3 -c '
+          import json, os, subprocess
+
+          logo = "png-01.png" if os.path.exists("png-01.png") else ("PNG-01.png" if os.path.exists("PNG-01.png") else "")
+          contents_path = "ios/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json"
+
+          if logo and os.path.exists(contents_path):
+              with open(contents_path, "r") as f:
+                  data = json.load(f)
+              for image in data.get("images", []):
+                  fn = image.get("filename")
+                  sz = image.get("size", "")
+                  sc = image.get("scale", "1x")
+                  if fn and sz:
+                      w, h = [float(x) for x in sz.split("x")]
+                      scale_val = float(sc.replace("x", ""))
+                      px_w = int(round(w * scale_val))
+                      px_h = int(round(h * scale_val))
+                      out_p = os.path.join("ios/Runner/Assets.xcassets/AppIcon.appiconset", fn)
+                      subprocess.run(["sips", "-z", str(px_h), str(px_w), logo, "--out", out_p], check=False)
+              print("All iOS app icons resized with exact dimensions!")
+          '
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Build iOS Release (Physical iPhone ARM64)
+        run: |
+          flutter build ios --release --no-codesign || {
+            echo "flutter build failed, building directly via xcodebuild..."
+            xcodebuild -workspace ios/Runner.xcworkspace \
+              -scheme Runner \
+              -configuration Release \
+              -destination 'generic/platform=iOS' \
+              -derivedDataPath build/ios \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY="" \
+              EXPANDED_CODE_SIGN_IDENTITY="" \
+              clean build
+          }
+
+      - name: Package Payload to .ipa
+        run: |
+          mkdir -p Payload
+          APP_DIR=""
+          for candidate in "build/ios/iphoneos/Runner.app" "build/ios/Build/Products/Release-iphoneos/Runner.app"; do
+            if [ -d "$candidate" ]; then
+              APP_DIR="$candidate"
+              break
+            fi
+          done
+          if [ -z "$APP_DIR" ]; then
+            echo "Searching for Runner.app..."
+            APP_DIR=$(find build/ios -name "Runner.app" -type d | head -n 1)
+          fi
+          echo "Packaging physical device $APP_DIR into IPA..."
+          cp -r "$APP_DIR" Payload/
+          zip -r -y FS7-iOS-Release.ipa Payload/
+
+      - name: Upload iOS IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: FS7-iOS-IPA
+          path: FS7-iOS-Release.ipa
+          if-no-files-found: error

@@ -1,0 +1,12 @@
+{
+  "name": "FS-7 Gym Staff App",
+  "short_name": "FS-7",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0E0E0E",
+  "theme_color": "#F58000",
+  "description": "FS-7 Gym Staff App",
+  "orientation": "portrait-primary",
+  "prefer_related_applications": false
+}
+
